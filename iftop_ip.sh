@@ -5,7 +5,7 @@
 # with max Rx/Tx speed rate
 # 
 # @author	Denis Pantsyrev <denis.pantsyrev@gmail.com>
-# @version	0.1.0 (2018-10-18)
+# @version	0.2.0 (2019-03-26)
 #==========================================================
 
 if [[ "$1" = "" ]]; then
@@ -19,7 +19,9 @@ if ! [[ -f /usr/sbin/iftop ]]; then
 fi
 
 declare -A fromIPTrafArray
+declare -A fromIPTrafArrayConnections
 declare -A toIPTrafArray
+declare -A toIPTrafArrayConnections
 topLimit=5
 
 # Output starts from left ip and traffic from this ip to right ip,
@@ -61,6 +63,7 @@ for row in $(/usr/sbin/iftop -tnN -s 3 -i $1 -L 4096 2>&1 | egrep "=>|<="\
     # Add speed value to suitable array
     if [[ $trafDirect = toRight ]]; then
         fromIPTrafArray["$curLeftIP"]=$(awk -v a="${fromIPTrafArray["$curLeftIP"]}" -v b="$speed" 'BEGIN {print a+b}')
+		fromIPTrafArrayConnections["$curLeftIP"]=$(awk -v a="${fromIPTrafArray["$curLeftIP"]}" 'BEGIN {print a+1}')
         # Remember current value because we still don't know right IP
         toRightIPCurTraf=$speed
         continue
@@ -68,8 +71,11 @@ for row in $(/usr/sbin/iftop -tnN -s 3 -i $1 -L 4096 2>&1 | egrep "=>|<="\
 
     if [[ $trafDirect = toLeft ]]; then
         fromIPTrafArray["$curRightIP"]=$(awk -v a="${fromIPTrafArray["$curRightIP"]}" -v b="$speed" 'BEGIN {print a+b}')
-        toIPTrafArray["$curLeftIP"]=$(awk -v a="${toIPTrafArray["$curLeftIP"]}" -v b="$speed" 'BEGIN {print a+b}')
-        toIPTrafArray["$curRightIP"]=$(awk -v a="${toIPTrafArray["$curRightIP"]}" -v b="$toRightIPCurTraf" 'BEGIN {print a+b}')
+		fromIPTrafArrayConnections["$curRightIP"]=$(awk -v a="${fromIPTrafArray["$curLeftIP"]}" 'BEGIN {print a+1}')
+		toIPTrafArray["$curLeftIP"]=$(awk -v a="${toIPTrafArray["$curLeftIP"]}" -v b="$speed" 'BEGIN {print a+b}')
+        toIPTrafArrayConnections["$curLeftIP"]=$(awk -v a="${toIPTrafArray["$curLeftIP"]}" 'BEGIN {print a+1}')
+        toIPTrafArray["$curRightIP"]=$(awk -v a="${toIPTrafArray["$curRightIP"]}" -v b="$speed" 'BEGIN {print a+b}')
+        toIPTrafArrayConnections["$curRightIP"]=$(awk -v a="${toIPTrafArray["$curRightIP"]}" 'BEGIN {print a+1}')
         continue
     fi
 
@@ -80,7 +86,8 @@ echo "Top $topLimit traffic receiving IPs at $1 interface:"
 for i in "${!toIPTrafArray[@]}"
 do
     speed=$(printf "%.2f" ${toIPTrafArray["$i"]})
-    echo "$i <= $speed Mbit/s"
+	count=$(printf "%.0f" ${toIPTrafArrayConnections["$i"]})
+    echo "$i <= $speed Mbit/s ($count)"
 done | sort -rn -k3 | head -n $topLimit
 
 echo ""
@@ -89,7 +96,8 @@ echo "Top $topLimit traffic sending IPs at $1 interface:"
 for i in "${!fromIPTrafArray[@]}" 
 do 
     speed=$(printf "%.2f" ${fromIPTrafArray["$i"]})
-    echo "$i => $speed Mbit/s" 
+	count=$(printf "%.0f" ${fromIPTrafArrayConnections["$i"]})
+    echo "$i => $speed Mbit/s ($count)" 
 done | sort -rn -k3 | head -n $topLimit
 
 exit 0
